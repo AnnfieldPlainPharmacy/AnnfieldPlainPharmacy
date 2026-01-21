@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pharmacy Staff Rota</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { box-sizing:border-box; font-family:Segoe UI,Tahoma,sans-serif; }
+body { background:#f5f5f5; padding:20px; }
+.container { max-width:1400px; margin:auto; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); }
+.header { background:#2c3e50; color:white; padding:20px; display:flex; justify-content:space-between; align-items:center; }
+.week-navigation button { margin-left:6px; }
+button { background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:13px; }
+button:hover { background:#2980b9; }
+.rota-container { overflow-x:auto; }
+.rota-table { width:100%; border-collapse:collapse; min-width:1200px; }
+.rota-table th, .rota-table td { border:1px solid #ddd; padding:6px; text-align:center; }
+.rota-table th { background:#ecf0f1; position:sticky; top:0; }
+.employee-name { background:#f8f9fa; font-weight:600; min-width:220px; cursor:pointer; }
+.department-header { background:#34495e; color:white; font-weight:600; text-align:left; }
+
+/* --- Department subtle tinting --- */
+/* Department headers: keep the standard dark scheme */
+tr.department-row td.department-header { background: #34495e !important; color: #ffffff !important; }
+
+/* Department row tinting: apply only to regular cells (not totals, status, or today/holiday/sick) */
+tr.dept-medipak.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #fbf8ff; }
+tr.dept-counter.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #fff7f7; }
+tr.dept-dispensary.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #f3fbf3; }
+
+/* Keep totals and special states readable */
+tr.employee-row td.total-hours { background: #e8f4fc; }
+.add-btn { background:#3498db; color:white; border:none; border-radius:3px; width:20px; height:20px; font-size:14px; font-weight:bold; cursor:pointer; margin-left:8px; padding:0; }
+.shift-cell { cursor:pointer; }
+.shift-holiday { background:#ffeb3b !important; font-weight:700; color:#1f1f1f !important; }
+.shift-sick { background:#03a9f4 !important; font-weight:700; color:#ffffff !important; }
+.total-hours { background:#e8f4fc; font-weight:600; }
+.employee-row:hover { background:#f1f8ff; }
+.delete { color:#e74c3c; cursor:pointer; font-weight:bold; }
+.controls { padding:15px; background:#f8f9fa; display:flex; gap:10px; }
+.notes-section { padding:20px; border-top:1px solid #ddd; background:#f8f9fa; }
+.notes-section textarea { width:100%; min-height:120px; padding:10px; font-size:14px; }
+.status-bar { padding:10px; font-size:13px; color:#555; text-align:right; }
+
+.dept-name:empty:before {
+    content: "";
+    color: #bdc3c7;
+    font-style: italic;
+}
+
+
+/* --- Style tweaks for denser view --- */
+.header { padding: 12px 16px !important; }
+.header h1 { font-size: 20px; line-height: 1.15; }
+.header h1 small { font-size: 12px; opacity: 0.9; }
+
+.rota-container { 
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 320px);
+}
+
+.rota-table th, .rota-table td { 
+    padding: 4px 6px; 
+    font-size: 13px; 
+}
+
+.employee-name { 
+    font-size: 12px; 
+    padding: 4px 6px;
+}
+
+.shift-cell { font-size: 13px; }
+
+.notes-section { padding: 14px 16px; }
+.notes-section textarea { min-height: 90px; font-size: 13px; }
+
+
+.dispensary-total-row td {
+    background: #d9edf7;
+    font-weight: 700;
+}
+.dispensary-total-row .label {
+    text-align: left;
+}
+
+
+/* --- Current day column highlight (subtle) --- */
+th.today-col, td.today-col {
+    background: #f2f2f2 !important;
+    color: #111 !important;
+}
+
+/* --- Quick Holiday button inside shift cells --- */
+.shift-cell { position: relative; }
+.holiday-btn {
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    font-size: 11px;
+    line-height: 16px;
+    height: 16px;
+    padding: 0 6px;
+    border-radius: 10px;
+    border: 0;
+    background: rgba(0,0,0,0.10);
+    color: #2c3e50;
+    cursor: pointer;
+    display: none;
+}
+.shift-cell:hover .holiday-btn { display: inline-block; }
+.holiday-btn:hover { background: rgba(0,0,0,0.18); }
+
+/* Ensure holiday/sick still readable even on dark column */
+/* holiday text colour handled above */
+/* sick text colour handled above */
+
+
+.sick-btn {
+    position: absolute;
+    top: 3px;
+    right: 70px;
+    font-size: 11px;
+    line-height: 16px;
+    height: 16px;
+    padding: 0 6px;
+    border-radius: 10px;
+    border: 0;
+    background: rgba(0,0,0,0.10);
+    color: #2c3e50;
+    cursor: pointer;
+    display: none;
+}
+.shift-cell:hover .sick-btn { display: inline-block; }
+.sick-btn:hover { background: rgba(0,0,0,0.18); }
+
+.today-col .sick-btn {
+    background: rgba(255,255,255,0.18) !important;
+    color: #ffffff !important;
+}
+
+
+
+/* --- Right-click context menu --- */
+.context-menu{
+    position: fixed;
+    z-index: 9999;
+    display: none;
+    min-width: 180px;
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    overflow: hidden;
+}
+.context-menu button{
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    color: #2c3e50;
+    border: 0;
+    padding: 10px 12px;
+    border-radius: 0;
+    font-size: 13px;
+    cursor: pointer;
+}
+.context-menu button:hover{ background: #f3f6f9; }
+.context-menu .danger{ color:#c0392b; }
+.context-menu .divider{ height:1px; background:#eeeeee; }
+
+.context-menu .has-submenu{ position: relative; }
+.context-menu .arrow{ float:right; opacity:0.7; }
+.context-submenu{
+    position: fixed;
+    z-index: 10000;
+    display: none;
+    min-width: 170px;
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    overflow: hidden;
+}
+.context-submenu button{ width:100%; text-align:left; background:transparent; color:#2c3e50; border:0; padding:10px 12px; font-size:13px; cursor:pointer; }
+.context-submenu button:hover{ background:#f3f6f9; }
+.context-submenu .danger{ color:#c0392b; }
+.context-submenu .divider{ height:1px; background:#eeeeee; }
+
+
+@media print {
+    .today-col {
+        background: #eeeeee !important;
+        color: #000000 !important;
+    }
+    .today-col .holiday-btn, .today-col .sick-btn {
+        display: none !important;
+    }
+}
+
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+<h1>Pharmacy Staff Rota<br><small id="printWeek"></small></h1>
+<div class="week-navigation">
+<button id="prevWeek">◀</button>
+<span id="weekDisplay"></span>
+<button id="nextWeek">▶</button>
+<button id="currentWeek">Current</button>
+</div>
+</div>
+<div class="rota-container">
+<table class="rota-table" id="rotaTable"></table>
+</div>
+<div class="controls">
+<button id="saveRota">Save</button>
+<button onclick="window.print()">Print</button>
+</div>
+<div class="notes-section">
+<h3>📝 Notes</h3>
+<textarea id="rotaNotes" placeholder="Enter notes here...(e.g...Holiday requests, special instructions, reminders)"></textarea>
+</div>
+<div class="status-bar">
+<span id="lastSaved"></span>
+</div>
+</div>
+
+<!-- Right-click menu for shift cells -->
+<div id="contextMenu" class="context-menu" role="menu" aria-hidden="true">
+    <button type="button" onclick="contextWorking()">✏️ Working (edit shift)</button>
+    <button type="button" onclick="contextSet('HOLIDAY')">🏖️ Holiday</button>
+    <button type="button" onclick="contextSet('SICK')">🤒 Sickness</button>
+    <button type="button" class="has-submenu" onmouseenter="openBreakSubmenu()" onclick="toggleBreakSubmenu(event)">⏱️ Break <span class="arrow">▶</span></button>
+    <div id="breakSubMenu" class="context-submenu" aria-hidden="true">
+        <button type="button" onclick="contextSetBreak(0)">0 min</button>
+        <button type="button" onclick="contextSetBreak(30)">30 min</button>
+        <button type="button" onclick="contextSetBreak(60)">60 min</button>
+        <div class="divider"></div>
+        <button type="button" onclick="contextFreeTypeBreak()">Free type…</button>
+        <button type="button" class="danger" onclick="contextClearBreak()">Clear manual break</button>
+    </div>
+    <div class="divider"></div>
+    <button type="button" class="danger" onclick="contextSet('')">🧽 Clear</button>
+</div>
+
+<script>
+let currentWeekOffset = 0;
+let weekNotes = "";
+const templateData = [
+    {
+        "department": "Medipak",
+        "employees": [
+            {
+                "name": "Rachel Stoker",
+                "shifts": [
+                    "9-6",
+                    "13:00-18:00",
+                    "9-6",
+                    "",
+                    "",
+                    "",
+                    ""
+                ]
+            }
+        ]
+    },
+    {
+        "department": "Counter Staff",
+        "employees": [
+            {
+                "name": "Allison Hole",
+                "shifts": [
+                    "9-12",
+                    "9-12",
+                    "9-1",
+                    "9-1",
+                    "9-1",
+                    "",
+                    ""
+                ]
+            },
+            {
+                "name": "Della Stait",
+                "shifts": [
+                    "12-6",
+                    "",
+                    "",
+                    "13:00-18:00",
+                    "13:00-18:00",
+                    "",
+                    ""
+                ]
+            }
+        ]
+    },
+    {
+        "department": "Dispensary",
+        "employees": [
+            {
+                "name": "Jude Taylor",
+                "shifts": [
+                    "9-6",
+                    "9-6",
+                    "9-6",
+                    "9-6",
+                    "9-6",
+                    "",
+                    ""
+                ]
+            },
+            {
+                "name": "Jane Vickers",
+                "shifts": [
+                    "9-6",
+                    "",
+                    "9-6",
+                    "9-3",
+                    "",
+                    "",
+                    ""
+                ]
+            },
+            {
+                "name": "Olivia Pharoah",
+                "shifts": [
+                    "9-6",
+                    "9-6",
+                    "9-6",
+                    "9-6",
+                    "9-6",
+                    "",
+                    ""
+                ]
+            }
+        ]
+    },
+    {
+        "department": "_",
+        "employees": [
+            {
+                "name": "Wendy Anderson",
+                "shifts": [
+                    "9-3",
+                    "9-3",
+                    "",
+                    "9-3",
+                    "9-3",
+                    "",
+                    ""
+                ]
+            }
+        ]
+    }
+];
+let currentData = JSON.parse(JSON.stringify(templateData));
+
+
+
+
+
+function getWeekDates(offset=0){
+const now=new Date();
+const base=new Date(now.getFullYear(),now.getMonth(),now.getDate()+offset*7);
+const day=base.getDay();
+const diff=day===0?-6:1-day;
+const monday=new Date(base);
+monday.setDate(base.getDate()+diff);
+return Array.from({length:7},(_,i)=>new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+i));
+}
+function isToday(d){
+    const now = new Date();
+    return d.getFullYear()===now.getFullYear() &&
+           d.getMonth()===now.getMonth() &&
+           d.getDate()===now.getDate();
+}
+
+
+function ordinal(n){
+    const s = ["th","st","nd","rd"]; 
+    const v = n % 100;
+    return n + (s[(v-20)%10] || s[v] || s[0]);
+}
+
+function formatHeaderDate(d){
+    const wd = d.toLocaleDateString("en-GB", { weekday: "short" });
+    const mon = d.toLocaleDateString("en-GB", { month: "short" });
+    return `${wd} ${ordinal(d.getDate())} ${mon}`;
+}
+
+function setSick(di, ei, si){
+    const cur = currentData[di].employees[ei].shifts[si] || "";
+    currentData[di].employees[ei].shifts[si] = (cur === "SICK") ? "" : "SICK";
+    autoSaveWeek();
+    render();
+}
+
+function setHoliday(di, ei, si){
+    // Toggle holiday on/off
+    const cur = currentData[di].employees[ei].shifts[si] || "";
+    currentData[di].employees[ei].shifts[si] = (cur === "HOLIDAY") ? "" : "HOLIDAY";
+    autoSaveWeek();
+    render();
+}
+
+function getWeekKey(){ return "rota_"+getWeekDates(currentWeekOffset)[0].toISOString().slice(0,10); }
+function normaliseShift(v){
+if(!v) return "";
+v = String(v).toLowerCase().trim();
+
+// Accept common user mistakes: "9 6", "9–6", "9 to 6"
+v = v
+  .replace(/[–—]/g,"-")
+  .replace(/\s+to\s+/g,"-")
+  .replace(/\s+/g,"-");
+
+// Normalise non-time status values
+if(v==="h" || v==="hol" || v==="holiday") return "HOLIDAY";
+if(v==="s" || v==="sick") return "SICK";
+
+// Must be time range, otherwise treat as blank (fail-safe)
+if(!/^\d{1,2}(:\d{2})?-\d{1,2}(:\d{2})?$/.test(v)) return "";
+
+// Safe split
+let[a,b]=v.split("-");
+function toTime(t){
+if(!t.includes(":")) t+=":00";
+let[h,m]=t.split(":").map(Number);
+return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+}
+let start=toTime(a);
+let endH=parseInt(b);
+let startH=parseInt(a);
+if(endH<=startH) endH+=12;
+let end=`${String(endH).padStart(2,"0")}:00`;
+return `${start}-${end}`;
+}
+
+
+// ---- Break overrides ----
+// We store manual breaks by appending "|B<minutes>" to the shift string.
+// Example: "09:00-18:00|B30"
+function parseBreak(raw){
+    if(!raw) return { base: "", br: null };
+    const parts = String(raw).split("|B");
+    if(parts.length === 2){
+        const mins = Number(parts[1]);
+        if(Number.isFinite(mins) && mins >= 0) return { base: parts[0], br: mins };
+    }
+    return { base: String(raw), br: null };
+}
+function withBreak(base, br){
+    if(!base) return "";
+    if(base === "HOLIDAY" || base === "SICK") return base;
+    if(br === null || br === undefined) return base;
+    const mins = Math.max(0, Math.round(Number(br)));
+    return `${base}|B${mins}`;
+}
+function breakMinutes(shift){
+    const { base, br } = parseBreak(shift);
+    if(!base || base==="HOLIDAY" || base==="SICK") return 0;
+    if(br !== null) return br;
+    const [s,e] = normaliseShift(base).split("-");
+    const [sh,sm] = s.split(":").map(Number);
+    const [eh,em] = e.split(":").map(Number);
+    let mins = (eh*60+em) - (sh*60+sm);
+    // Break rule: full-day (e.g. 09:00-18:00) gets 60 mins; half-days get 0
+    return mins >= 9*60 ? 60 : 0;
+}
+function hours(shift){
+    const { base } = parseBreak(shift);
+    if(!base || base==="HOLIDAY" || base==="SICK") return 0;
+    const [s,e] = normaliseShift(base).split("-");
+    const [sh,sm] = s.split(":").map(Number);
+    const [eh,em] = e.split(":").map(Number);
+    let mins = (eh*60+em) - (sh*60+sm);
+    mins -= breakMinutes(shift);
+    return Math.max(0, mins / 60);
+}
+
+function deptClass(deptName){
+    const n = (deptName||"").toLowerCase();
+    if(n.includes("medipak")) return "dept-medipak";
+    if(n.includes("counter")) return "dept-counter";
+    if(n.includes("dispensary")) return "dept-dispensary";
+    return "";
+}
+function render() {
+    const table = document.getElementById("rotaTable");
+    table.innerHTML = "";
+
+    const days = getWeekDates(currentWeekOffset);
+
+    weekDisplay.textContent = `${days[0].toLocaleDateString("en-GB")} - ${days[6].toLocaleDateString("en-GB")}`;
+    printWeek.textContent = "Week commencing " + days[0].toLocaleDateString("en-GB");
+
+    // Header
+    let header = `<tr><th></th><th>Employee</th>`;
+    header += days.map(d => `<th class="${isToday(d)?"today-col":""}">${formatHeaderDate(d)}</th>`).join("");
+    header += `<th>Total</th></tr>`;
+    table.innerHTML += header;
+
+    // Body
+    currentData.forEach((dept, di) => {
+        // Department header row (drop target)
+        const dClass = deptClass(dept.department);
+        table.innerHTML += `
+            <tr class="department-row ${dClass}" data-dept="${di}" ondragover="allowDrop(event)" ondrop="dropOnDepartment(event)">
+                <td colspan="10" class="department-header">
+                    <span class="dept-name" ondblclick="editDepartment(this,${di})">${dept.department}</span>
+                    <button class="add-btn" onclick="addEmployee(${di})">+</button>
+                </td>
+            </tr>
+        `;
+
+        // Employees
+        dept.employees.forEach((emp, ei) => {
+            let total = 0;
+
+            let row = `<tr class="employee-row ${dClass}" draggable="true"
+                            data-dept="${di}" data-emp="${ei}"
+                            ondragstart="dragEmployee(event)"
+                            ondragover="allowDrop(event)"
+                            ondrop="dropEmployee(event)">`;
+
+            row += `<td class="delete" onclick="delEmp(${di},${ei})">×</td>`;
+            row += `<td class="employee-name" ondblclick="editName(this,${di},${ei})">${emp.name}</td>`;
+
+            for (let si = 0; si < 7; si++) {
+                const raw = (emp.shifts && emp.shifts[si]) ? emp.shifts[si] : "";
+                const parsed = parseBreak(raw);
+                const base = parsed.base || "";
+                const norm = base ? normaliseShift(base) : "";
+                const display = (norm === "HOLIDAY") ? "HOL" : (norm === "SICK") ? "SICK" : norm;
+                total += hours(raw);
+
+                const klass =
+                    norm === "HOLIDAY" ? "shift-holiday" :
+                    norm === "SICK" ? "shift-sick" : "";
+
+                const todayClass = isToday(days[si]) ? 'today-col' : '';
+                row += `<td class="shift-cell ${klass} ${todayClass}"
+                            data-di="${di}" data-ei="${ei}" data-si="${si}"
+                            title="${breakMinutes(raw)} min"
+                            onclick="editShift(this,${di},${ei},${si})"
+                            oncontextmenu="openContextMenu(event,${di},${ei},${si})">${display}</td>`;
+            }
+
+            row += `<td class="total-hours">${total.toFixed(1)}</td>`;
+            row += `</tr>`;
+
+            table.innerHTML += row;
+        });
+
+        // Dispensary totals row (under dispensary employees)
+        if (dept.department === "Dispensary") {
+            const dayTotals = [0, 0, 0, 0, 0, 0, 0];
+
+            dept.employees.forEach(emp => {
+                for (let si = 0; si < 7; si++) {
+                    const raw = (emp.shifts && emp.shifts[si]) ? emp.shifts[si] : "";
+                    dayTotals[si] += hours(raw);
+                }
+            });
+
+            const weekTotal = dayTotals.reduce((a, b) => a + b, 0);
+
+            let totalRow = `<tr class="dispensary-total-row">`;
+            totalRow += `<td></td>`;
+            totalRow += `<td class="label">Dispensary hours</td>`;
+            for (let i = 0; i < 7; i++) {
+                totalRow += `<td>${dayTotals[i].toFixed(1)}</td>`;
+            }
+            totalRow += `<td class="total-hours">${weekTotal.toFixed(1)}</td>`;
+            totalRow += `</tr>`;
+
+            table.innerHTML += totalRow;
+        }
+    });
+
+    // Notes
+    document.getElementById("rotaNotes").value = weekNotes;
+}
+
+function editShift(cell,di,ei,si){
+    const currentRaw = currentData[di].employees[ei].shifts[si] || "";
+    const parsed = parseBreak(currentRaw);
+    const existingBreak = parsed.br;
+
+    const input = document.createElement("input");
+    input.value = parsed.base || "";
+    cell.innerHTML = "";
+    cell.appendChild(input);
+    input.focus();
+
+    
+    input.select();input.onblur = ()=>{
+        const newBase = normaliseShift(input.value);
+        // If blank / holiday / sick, drop any manual break override
+        let next;
+        if(!newBase || newBase === "HOLIDAY" || newBase === "SICK"){
+            next = newBase || "";
+        } else {
+            next = withBreak(newBase, existingBreak);
+        }
+        currentData[di].employees[ei].shifts[si] = next;
+        autoSaveWeek();
+        render();
+    };
+
+    input.onkeydown = (e)=>{
+        if(e.key === "Enter") input.blur();
+        if(e.key === "Escape"){
+            render();
+            closeContextMenu();
+        }
+    };
+}
+
+function editName(td,di,ei){
+const input=document.createElement("input");
+input.value=td.textContent;
+td.innerHTML=""; td.appendChild(input); input.focus();
+
+    input.select();input.onblur=()=>{ currentData[di].employees[ei].name=input.value.trim()||"Unnamed"; autoSaveWeek(); render(); };
+}
+function editDepartment(span,di){
+const input=document.createElement("input");
+input.value=span.textContent;
+span.replaceWith(input); input.focus();
+input.onblur=()=>{ currentData[di].department=input.value.trim(); render(); };
+}
+function addEmployee(di){ currentData[di].employees.push({name:"New Employee",shifts:["","","","","","",""]}); autoSaveWeek(); render(); }
+function delEmp(di,ei){ if(confirm("Delete employee?")){ currentData[di].employees.splice(ei,1); autoSaveWeek(); render(); } }
+function addDepartment(){ currentData.push({department:"",employees:[]}); render(); }
+let draggedEmployee=null;
+function dragEmployee(e){ const r=e.currentTarget; draggedEmployee={fromDept:+r.dataset.dept, fromIndex:+r.dataset.emp}; r.style.opacity="0.5"; }
+function allowDrop(e){ e.preventDefault(); }
+function dropEmployee(e){
+e.preventDefault(); if(!draggedEmployee) return;
+const toDept=+e.currentTarget.dataset.dept;
+const toIndex=+e.currentTarget.dataset.emp;
+const {fromDept,fromIndex}=draggedEmployee;
+const emp=currentData[fromDept].employees.splice(fromIndex,1)[0];
+currentData[toDept].employees.splice(toIndex,0,emp);
+draggedEmployee=null; autoSaveWeek(); render();
+}
+function dropOnDepartment(e){
+e.preventDefault(); if(!draggedEmployee) return;
+const toDept=+e.currentTarget.dataset.dept;
+const {fromDept,fromIndex}=draggedEmployee;
+const emp=currentData[fromDept].employees.splice(fromIndex,1)[0];
+currentData[toDept].employees.push(emp);
+draggedEmployee=null; autoSaveWeek(); render();
+}
+document.addEventListener("dragend",()=>{ document.querySelectorAll(".employee-row").forEach(r=>r.style.opacity="1"); });
+
+
+let contextTarget = null;
+    closeBreakSubmenu();
+
+function openContextMenu(e, di, ei, si){
+    e.preventDefault();
+    contextTarget = {di, ei, si};
+
+    const menu = document.getElementById('contextMenu');
+    if(!menu) return;
+
+    // position within viewport
+    const pad = 8;
+    menu.style.display = 'block';
+    const { innerWidth:w, innerHeight:h } = window;
+    const rect = menu.getBoundingClientRect();
+
+    let x = e.clientX;
+    let y = e.clientY;
+    if(x + rect.width + pad > w) x = w - rect.width - pad;
+    if(y + rect.height + pad > h) y = h - rect.height - pad;
+
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.setAttribute('aria-hidden','false');
+    closeBreakSubmenu();
+}
+
+function closeContextMenu(){
+    const menu = document.getElementById('contextMenu');
+    if(!menu) return;
+    menu.style.display = 'none';
+    menu.setAttribute('aria-hidden','true');
+    contextTarget = null;
+    closeBreakSubmenu();
+}
+
+function contextSet(val){
+    if(!contextTarget) return;
+    const {di, ei, si} = contextTarget;
+    currentData[di].employees[ei].shifts[si] = val;
+    autoSaveWeek();
+    render();
+    closeContextMenu();
+}
+
+function contextWorking(){
+    if(!contextTarget) return;
+    const {di, ei, si} = contextTarget;
+    closeContextMenu();
+    // find the cell and open the editor
+    const cell = document.querySelector(`.shift-cell[data-di="${di}"][data-ei="${ei}"][data-si="${si}"]`);
+    if(cell) editShift(cell, di, ei, si);
+}
+
+
+
+function getContextMenuRect(){
+    const menu = document.getElementById('contextMenu');
+    return menu ? menu.getBoundingClientRect() : null;
+}
+
+function openBreakSubmenu(){
+    const sub = document.getElementById('breakSubMenu');
+    const menu = document.getElementById('contextMenu');
+    if(!sub || !menu || menu.style.display !== 'block') return;
+
+    const rect = menu.getBoundingClientRect();
+    // Place to the right of main menu, aligned roughly with the Break button
+    const pad = 6;
+    let x = rect.right + pad;
+    let y = rect.top + 70; // approx position under first 3 buttons
+
+    // keep within viewport
+    const { innerWidth:w, innerHeight:h } = window;
+    sub.style.display = 'block';
+    const srect = sub.getBoundingClientRect();
+    if(x + srect.width + pad > w) x = rect.left - srect.width - pad;
+    if(y + srect.height + pad > h) y = h - srect.height - pad;
+
+    sub.style.left = x + 'px';
+    sub.style.top = y + 'px';
+    sub.setAttribute('aria-hidden','false');
+}
+
+function closeBreakSubmenu(){
+    const sub = document.getElementById('breakSubMenu');
+    if(!sub) return;
+    sub.style.display = 'none';
+    sub.setAttribute('aria-hidden','true');
+}
+
+function toggleBreakSubmenu(e){
+    e.preventDefault();
+    const sub = document.getElementById('breakSubMenu');
+    if(!sub) return;
+    if(sub.style.display === 'block') closeBreakSubmenu();
+    else openBreakSubmenu();
+}
+
+function contextSetBreak(mins){
+    if(!contextTarget) return;
+    const {di, ei, si} = contextTarget;
+    const raw = currentData[di].employees[ei].shifts[si] || "";
+    const parsed = parseBreak(raw);
+    const base = normaliseShift(parsed.base || "");
+
+    if(!base || base === 'HOLIDAY' || base === 'SICK'){
+        alert('Set a working shift first, then set the break.');
+        return;
+    }
+
+    currentData[di].employees[ei].shifts[si] = withBreak(base, mins);
+    autoSaveWeek();
+    render();
+    closeBreakSubmenu();
+    closeContextMenu();
+}
+
+function contextClearBreak(){
+    if(!contextTarget) return;
+    const {di, ei, si} = contextTarget;
+    const raw = currentData[di].employees[ei].shifts[si] || "";
+    const parsed = parseBreak(raw);
+    const base = normaliseShift(parsed.base || "");
+    currentData[di].employees[ei].shifts[si] = base || "";
+    autoSaveWeek();
+    render();
+    closeBreakSubmenu();
+    closeContextMenu();
+}
+
+function contextFreeTypeBreak(){
+    const val = prompt('Enter break in minutes (e.g. 15, 45, 75):');
+    if(val === null) return;
+    const mins = Number(val);
+    if(!Number.isFinite(mins) || mins < 0){
+        alert('Please enter a valid number of minutes.');
+        return;
+    }
+    contextSetBreak(Math.round(mins));
+}
+
+// Close menu on click elsewhere / escape / scroll
+document.addEventListener('click', (e)=>{
+    const menu = document.getElementById('contextMenu');
+    if(!menu || menu.style.display !== 'block') return;
+    if(!menu.contains(e.target)) closeContextMenu();
+});
+
+document.addEventListener('keydown', (e)=>{
+    if(e.key === 'Escape'){
+        closeContextMenu();
+        return;
+    }
+
+    // Keyboard week navigation: Left/Right arrows
+    // (Avoid hijacking arrows while typing in inputs/notes or using the context menu)
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowRight'){
+        const ae = document.activeElement;
+        const tag = ae && ae.tagName ? ae.tagName.toUpperCase() : '';
+        const typing = tag === 'INPUT' || tag === 'TEXTAREA' || (ae && ae.isContentEditable);
+        const inMenu = ae && ae.closest && (ae.closest('#contextMenu') || ae.closest('#breakSubMenu'));
+        const menuOpen = (document.getElementById('contextMenu') || {}).style?.display === 'block';
+        if(typing || inMenu || menuOpen) return;
+
+        e.preventDefault();
+        closeContextMenu();
+        if(e.key === 'ArrowLeft') prevWeek.click();
+        if(e.key === 'ArrowRight') nextWeek.click();
+    }
+});
+
+window.addEventListener('scroll', ()=> closeContextMenu(), true);
+window.addEventListener('resize', ()=> closeContextMenu());
+
+function autoSaveWeek(){
+    weekNotes = document.getElementById("rotaNotes").value;
+    localStorage.setItem(getWeekKey(), JSON.stringify({data: currentData, notes: weekNotes}));
+    lastSaved.textContent = "Auto-saved";
+}
+
+function loadWeek(){
+const saved=localStorage.getItem(getWeekKey());
+if(saved){
+    const p=JSON.parse(saved);
+    currentData=p.data;
+    weekNotes=p.notes||"";
+} else {
+    // IMPORTANT: new/unsaved weeks must start from the hard-wired template
+    currentData = JSON.parse(JSON.stringify(templateData));
+    weekNotes="";
+}
+}
+saveRota.onclick=()=>{ autoSaveWeek(); };
+prevWeek.onclick=()=>{ currentWeekOffset--; document.getElementById("rotaNotes").addEventListener("input", () => {
+    autoSaveWeek();
+});
+
+loadWeek(); render(); };
+nextWeek.onclick=()=>{ currentWeekOffset++; document.getElementById("rotaNotes").addEventListener("input", () => {
+    autoSaveWeek();
+});
+
+loadWeek(); render(); };
+currentWeek.onclick=()=>{ currentWeekOffset=0; document.getElementById("rotaNotes").addEventListener("input", () => {
+    autoSaveWeek();
+});
+
+loadWeek(); render(); };
+document.getElementById("rotaNotes").addEventListener("input", () => {
+    autoSaveWeek();
+});
+
+loadWeek(); render();
+</script>
+</body>
+</html>
