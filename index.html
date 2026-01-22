@@ -1,4 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pharmacy Staff Rota</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+* { box-sizing:border-box; font-family:Segoe UI,Tahoma,sans-serif; }
+body { background:#f5f5f5; padding:20px; }
+.container { max-width:1400px; margin:auto; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); }
+.header { background:#2c3e50; color:white; padding:20px; display:flex; justify-content:space-between; align-items:center; }
+.week-navigation button { margin-left:6px; }
+button { background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:13px; }
+button:hover { background:#2980b9; }
+.rota-container { overflow-x:auto; }
+.rota-table { width:100%; border-collapse:collapse; min-width:1200px; }
+.rota-table th, .rota-table td { border:1px solid #ddd; padding:6px; text-align:center; }
+.rota-table th { background:#ecf0f1; position:sticky; top:0; }
+.employee-name { background:#f8f9fa; font-weight:600; min-width:220px; cursor:pointer; }
+.department-header { background:#34495e; color:white; font-weight:600; text-align:left; }
+
+/* --- Department subtle tinting --- */
+tr.department-row td.department-header { background: #34495e !important; color: #ffffff !important; }
+tr.dept-medipak.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #fbf8ff; }
+tr.dept-counter.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #fff7f7; }
+tr.dept-dispensary.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #f3fbf3; }
+
+tr.employee-row td.total-hours { background: #e8f4fc; }
+.add-btn { background:#3498db; color:white; border:none; border-radius:3px; width:20px; height:20px; font-size:14px; font-weight:bold; cursor:pointer; margin-left:8px; padding:0; }
+.shift-cell { cursor:pointer; }
+.shift-holiday { background:#ffeb3b !important; font-weight:700; color:#1f1f1f !important; }
+.shift-sick { background:#03a9f4 !important; font-weight:700; color:#ffffff !important; }
+.total-hours { background:#e8f4fc; font-weight:600; }
+.employee-row:hover { background:#f1f8ff; }
+.delete { color:#e74c3c; cursor:pointer; font-weight:bold; }
+.controls { padding:15px; background:#f8f9fa; display:flex; gap:10px; }
+.notes-section { padding:20px; border-top:1px solid #ddd; background:#f8f9fa; }
+.notes-section textarea { width:100%; min-height:120px; padding:10px; font-size:14px; }
+.status-bar { padding:10px; font-size:13px; color:#555; text-align:right; }
+
+.dept-name:empty:before { content: ""; color: #bdc3c7; font-style: italic; }
+
+/* --- Style tweaks for denser view --- */
+.header { padding: 12px 16px !important; }
+.header h1 { font-size: 20px; line-height: 1.15; }
+.header h1 small { font-size: 12px; opacity: 0.9; }
+
+.rota-container { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 320px); }
+.rota-table th, .rota-table td { padding: 4px 6px; font-size: 13px; }
+.employee-name { font-size: 12px; padding: 4px 6px; }
+.shift-cell { font-size: 13px; }
+.notes-section { padding: 14px 16px; }
+.notes-section textarea { min-height: 90px; font-size: 13px; }
+
+.dispensary-total-row td { background: #d9edf7; font-weight: 700; }
+.dispensary-total-row .label { text-align: left; }
+
+/* --- Current day column highlight (subtle) --- */
+th.today-col, td.today-col { background: #f2f2f2 !important; color: #111 !important; }
+
+/* --- Right-click context menu --- */
+.context-menu{
+  position: fixed;
+  z-index: 9999;
+  display: none;
+  min-width: 180px;
+  background: #ffffff;
+  border: 1px solid #dcdcdc;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.context-menu button{
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #2c3e50;
+  border: 0;
+  padding: 10px 12px;
+  border-radius: 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.context-menu button:hover{ background: #f3f6f9; }
+.context-menu .danger{ color:#c0392b; }
+.context-menu .divider{ height:1px; background:#eeeeee; }
+
+.context-menu .has-submenu{ position: relative; }
+.context-menu .arrow{ float:right; opacity:0.7; }
+.context-submenu{
+  position: fixed;
+  z-index: 10000;
+  display: none;
+  min-width: 170px;
+  background: #ffffff;
+  border: 1px solid #dcdcdc;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.context-submenu button{ width:100%; text-align:left; background:transparent; color:#2c3e50; border:0; padding:10px 12px; font-size:13px; cursor:pointer; }
+.context-submenu button:hover{ background:#f3f6f9; }
+.context-submenu .danger{ color:#c0392b; }
+.context-submenu .divider{ height:1px; background:#eeeeee; }
+
+@media print {
+  .today-col { background: #eeeeee !important; color: #000000 !important; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Pharmacy Staff Rota<br><small id="printWeek"></small></h1>
+    <div class="week-navigation">
+      <button id="prevWeek">◀</button>
+      <span id="weekDisplay"></span>
+      <button id="nextWeek">▶</button>
+      <button id="currentWeek">Current</button>
+    </div>
+  </div>
+
+  <div class="rota-container">
+    <table class="rota-table" id="rotaTable"></table>
+  </div>
+
+  <div class="controls">
+    <button id="saveRota">Save</button>
+    <button onclick="window.print()">Print</button>
+  </div>
+
+  <div class="notes-section">
+    <h3>📝 Notes</h3>
+    <textarea id="rotaNotes" placeholder="Enter notes here...(e.g...Holiday requests, special instructions, reminders)"></textarea>
+  </div>
+
+  <div class="status-bar">
+    <span id="lastSaved"></span>
+  </div>
+</div>
+
+<!-- Right-click menu for shift cells -->
+<div id="contextMenu" class="context-menu" role="menu" aria-hidden="true">
+  <button type="button" onclick="contextWorking()">✏️ Working (edit shift)</button>
+  <button type="button" onclick="contextSet('HOLIDAY')">🏖️ Holiday</button>
+  <button type="button" onclick="contextSet('SICK')">🤒 Sickness</button>
+  <button type="button" class="has-submenu" onmouseenter="openBreakSubmenu()" onclick="toggleBreakSubmenu(event)">⏱️ Break <span class="arrow">▶</span></button>
+  <div id="breakSubMenu" class="context-submenu" aria-hidden="true">
+    <button type="button" onclick="contextSetBreak(0)">0 min</button>
+    <button type="button" onclick="contextSetBreak(30)">30 min</button>
+    <button type="button" onclick="contextSetBreak(60)">60 min</button>
+    <div class="divider"></div>
+    <button type="button" onclick="contextFreeTypeBreak()">Free type…</button>
+    <button type="button" class="danger" onclick="contextClearBreak()">Clear manual break</button>
+  </div>
+  <div class="divider"></div>
+  <button type="button" class="danger" onclick="contextSet('')">🧽 Clear</button>
+</div>
+
 <script>
+/* =========================
+   Google Sheets Web App API
+   ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxr7a3Fz9sQgkOJMPT5twHkLyPFkTo9HUImVK2Q_Hw9zrwpjNck15-x3TgPjVlI7WAg/exec";
 
 async function apiGetRota(weekStart, department) {
@@ -7,14 +169,26 @@ async function apiGetRota(weekStart, department) {
   return await res.json();
 }
 
+// Use text/plain to avoid CORS preflight issues with Apps Script
 async function apiSaveUpserts(upserts) {
   const res = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({ upserts })
   });
   return await res.json();
 }
+
+/* =========================
+   DOM bindings (prevents blank page on some browsers)
+   ========================= */
+const weekDisplay = document.getElementById("weekDisplay");
+const printWeek = document.getElementById("printWeek");
+const lastSaved = document.getElementById("lastSaved");
+const prevWeek = document.getElementById("prevWeek");
+const nextWeek = document.getElementById("nextWeek");
+const currentWeek = document.getElementById("currentWeek");
+const saveRota = document.getElementById("saveRota");
 
 let currentWeekOffset = 0;
 let weekNotes = "";
@@ -47,7 +221,7 @@ function getWeekDates(offset=0){
   return Array.from({length:7},(_,i)=>new Date(monday.getFullYear(),monday.getMonth(),monday.getDate()+i));
 }
 function getWeekStartISO(){
-  return getWeekDates(currentWeekOffset)[0].toISOString().slice(0,10); // YYYY-MM-DD (Monday)
+  return getWeekDates(currentWeekOffset)[0].toISOString().slice(0,10);
 }
 function isToday(d){
   const now = new Date();
@@ -202,14 +376,14 @@ function render() {
     });
 
     if (dept.department === "Dispensary") {
-      const dayTotals = [0, 0, 0, 0, 0, 0, 0];
+      const dayTotals = [0,0,0,0,0,0,0];
       dept.employees.forEach(emp => {
         for (let si = 0; si < 7; si++) {
           const raw = (emp.shifts && emp.shifts[si]) ? emp.shifts[si] : "";
           dayTotals[si] += hours(raw);
         }
       });
-      const weekTotal = dayTotals.reduce((a, b) => a + b, 0);
+      const weekTotal = dayTotals.reduce((a,b) => a + b, 0);
 
       let totalRow = `<tr class="dispensary-total-row">`;
       totalRow += `<td></td>`;
@@ -225,6 +399,9 @@ function render() {
   document.getElementById("rotaNotes").value = weekNotes;
 }
 
+/* =========================
+   Shared save/load to sheet
+   ========================= */
 async function saveCurrentWeekToSheet(){
   const weekStart = getWeekStartISO();
   const days = getWeekDates(currentWeekOffset);
@@ -281,19 +458,13 @@ function queueSaveToSheet(){
 
 function autoSaveWeek(){
   weekNotes = document.getElementById("rotaNotes").value;
-
-  // keep local fallback
   localStorage.setItem(getWeekKey(), JSON.stringify({data: currentData, notes: weekNotes}));
   lastSaved.textContent = "Auto-saved";
-
-  // shared save
   queueSaveToSheet();
 }
 
 async function loadWeekFromSheet(){
   const weekStart = getWeekStartISO();
-
-  // We fetch all rows for this week (no department filter) and overlay them into the template structure.
   const result = await apiGetRota(weekStart, "");
 
   if (result && result.error) {
@@ -302,12 +473,8 @@ async function loadWeekFromSheet(){
   }
 
   const rows = (result && result.rows) ? result.rows : [];
-  if(!rows.length){
-    // Nothing in sheet yet; keep template (or local fallback will apply in loadWeek)
-    return true;
-  }
 
-  // reset to template then apply sheet rows
+  // Reset to template then apply rows
   currentData = JSON.parse(JSON.stringify(templateData));
   const days = getWeekDates(currentWeekOffset);
 
@@ -317,7 +484,6 @@ async function loadWeekFromSheet(){
     }
     return -1;
   }
-
   function getOrCreateDept(deptName){
     let d = currentData.find(x => (x.department||"") === deptName);
     if(!d){
@@ -365,51 +531,29 @@ async function loadWeekFromSheet(){
 }
 
 async function loadWeek(){
-  // Try shared sheet first
   const ok = await loadWeekFromSheet();
-  if (ok) {
-    // If sheet is empty, try local fallback for this device
-    const saved = localStorage.getItem(getWeekKey());
-    if(saved){
-      const parsed = JSON.parse(saved);
-      // Only use local if it has something meaningful
-      if(parsed && parsed.data) {
-        currentData = parsed.data;
-        weekNotes = parsed.notes || "";
-      }
-    }
-    render();
-    return;
-  }
 
-  // fallback: local only
+  // If sheet has no rows yet, allow per-device fallback without breaking template
   const saved = localStorage.getItem(getWeekKey());
   if(saved){
     const parsed = JSON.parse(saved);
-    currentData = parsed.data || JSON.parse(JSON.stringify(templateData));
-    weekNotes = parsed.notes || "";
-    lastSaved.textContent = "Loaded from this device";
-  } else {
-    currentData = JSON.parse(JSON.stringify(templateData));
-    weekNotes = "";
+    if(parsed && parsed.data && Array.isArray(parsed.data)) {
+      // If the user already has a customised structure locally, prefer it
+      currentData = parsed.data;
+      weekNotes = parsed.notes || "";
+    }
   }
+
+  if(!ok){
+    lastSaved.textContent = "Using local data (sheet unavailable)";
+  }
+
   render();
 }
 
-// --- Your existing UI actions (unchanged except they call autoSaveWeek+render already) ---
-function setSick(di, ei, si){
-  const cur = currentData[di].employees[ei].shifts[si] || "";
-  currentData[di].employees[ei].shifts[si] = (cur === "SICK") ? "" : "SICK";
-  autoSaveWeek();
-  render();
-}
-function setHoliday(di, ei, si){
-  const cur = currentData[di].employees[ei].shifts[si] || "";
-  currentData[di].employees[ei].shifts[si] = (cur === "HOLIDAY") ? "" : "HOLIDAY";
-  autoSaveWeek();
-  render();
-}
-
+/* =========================
+   Editing / dragging logic
+   ========================= */
 function editShift(cell,di,ei,si){
   const currentRaw = currentData[di].employees[ei].shifts[si] || "";
   const parsed = parseBreak(currentRaw);
@@ -420,8 +564,8 @@ function editShift(cell,di,ei,si){
   cell.innerHTML = "";
   cell.appendChild(input);
   input.focus();
-
   input.select();
+
   input.onblur = ()=>{
     const newBase = normaliseShift(input.value);
     let next;
@@ -437,10 +581,7 @@ function editShift(cell,di,ei,si){
 
   input.onkeydown = (e)=>{
     if(e.key === "Enter") input.blur();
-    if(e.key === "Escape"){
-      render();
-      closeContextMenu();
-    }
+    if(e.key === "Escape"){ render(); closeContextMenu(); }
   };
 }
 
@@ -482,8 +623,16 @@ function dropOnDepartment(e){
 }
 document.addEventListener("dragend",()=>{ document.querySelectorAll(".employee-row").forEach(r=>r.style.opacity="1"); });
 
-// --- Context menu (unchanged) ---
+/* =========================
+   Context menu + break submenu
+   ========================= */
 let contextTarget = null;
+function closeBreakSubmenu(){
+  const sub = document.getElementById('breakSubMenu');
+  if(!sub) return;
+  sub.style.display = 'none';
+  sub.setAttribute('aria-hidden','true');
+}
 closeBreakSubmenu();
 
 function openContextMenu(e, di, ei, si){
@@ -550,12 +699,6 @@ function openBreakSubmenu(){
   sub.style.left = x + 'px';
   sub.style.top = y + 'px';
   sub.setAttribute('aria-hidden','false');
-}
-function closeBreakSubmenu(){
-  const sub = document.getElementById('breakSubMenu');
-  if(!sub) return;
-  sub.style.display = 'none';
-  sub.setAttribute('aria-hidden','true');
 }
 function toggleBreakSubmenu(e){
   e.preventDefault();
@@ -630,14 +773,18 @@ document.addEventListener('keydown', (e)=>{
 window.addEventListener('scroll', ()=> closeContextMenu(), true);
 window.addEventListener('resize', ()=> closeContextMenu());
 
-// --- Buttons / init ---
+/* =========================
+   Buttons + init
+   ========================= */
 saveRota.onclick = async () => { await saveCurrentWeekToSheet(); };
 prevWeek.onclick = async () => { currentWeekOffset--; await loadWeek(); };
 nextWeek.onclick = async () => { currentWeekOffset++; await loadWeek(); };
 currentWeek.onclick = async () => { currentWeekOffset=0; await loadWeek(); };
-
 document.getElementById("rotaNotes").addEventListener("input", () => autoSaveWeek());
 
-// initial load
-loadWeek();
+window.addEventListener("DOMContentLoaded", () => {
+  loadWeek();
+});
 </script>
+</body>
+</html>
