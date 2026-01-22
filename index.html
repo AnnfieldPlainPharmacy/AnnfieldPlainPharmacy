@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+  async function apiPingPost(){
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ ping: true, ts: new Date().toISOString() })
+  });
+  return await res.text();
+}
+
 <title>Pharmarota Pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
@@ -747,7 +756,18 @@ function initRota(){
   // Always show template immediately
   try { render(); } catch(e) { document.getElementById("lastSaved").textContent = "Render error: " + e.message; }
 
-  document.getElementById("saveRota").onclick = async () => { await saveCurrentWeekToSheet(); };
+  document.getElementById("saveRota").onclick = async () => {
+  document.getElementById("lastSaved").textContent = "POST testing…";
+  try{
+    const t = await apiPingPost();
+    document.getElementById("lastSaved").textContent =
+      "POST replied: " + t.slice(0,60);
+  } catch(e){
+    document.getElementById("lastSaved").textContent =
+      "POST failed: " + (e?.message || e);
+  }
+};
+
   document.getElementById("prevWeek").onclick = async () => { currentWeekOffset--; await loadWeek(); };
   document.getElementById("nextWeek").onclick = async () => { currentWeekOffset++; await loadWeek(); };
   document.getElementById("currentWeek").onclick = async () => { currentWeekOffset=0; await loadWeek(); };
