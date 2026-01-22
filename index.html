@@ -423,8 +423,20 @@ function queueSaveToSheet(){
 function autoSaveWeek(){
   weekNotes = document.getElementById("rotaNotes").value;
   localStorage.setItem(getWeekKey(), JSON.stringify({data: currentData, notes: weekNotes}));
-  document.getElementById("lastSaved").textContent = "Auto-saved";
-  queueSaveToSheet();
+  document.getElementById("lastSaved").textContent = "Saving to shared sheet…";
+  function queueSaveToSheet(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try{
+      const ok = await saveCurrentWeekToSheet();
+      if(!ok){
+        document.getElementById("lastSaved").textContent = "Save failed (shared)";
+      }
+    } catch(err){
+      document.getElementById("lastSaved").textContent = "Save failed: " + (err?.message || err);
+    }
+  }, 800);
+}
 }
 
 async function loadWeekFromSheet(){
