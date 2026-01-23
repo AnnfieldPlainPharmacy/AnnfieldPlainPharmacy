@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pharmarota Pro</title>
+<title>Pharmacy Staff Rota</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 * { box-sizing:border-box; font-family:Segoe UI,Tahoma,sans-serif; }
 body { background:#f5f5f5; padding:20px; }
-.container { max-width:1400px; margin:auto; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); }
+.container { max-width:1400px; margin:auto; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:hidden; }
 .header { background:#2c3e50; color:white; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
 .week-navigation button { margin-left:6px; }
 button { background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:13px; }
@@ -84,13 +84,16 @@ th.today-col, td.today-col { background: #f2f2f2 !important; color: #111 !import
 .context-submenu button:hover{ background:#f3f6f9; }
 .context-submenu .danger{ color:#c0392b; }
 .context-submenu .divider{ height:1px; background:#eeeeee; }
+
+footer a { color:#3498db; text-decoration:none; }
+footer a:hover { text-decoration:underline; }
 </style>
 </head>
 
 <body>
 <div class="container">
   <div class="header">
-    <h1 style="margin:0;font-size:20px;line-height:1.15;">Pharmarota Pro<br><small id="printWeek" style="font-size:12px;opacity:0.9;"></small></h1>
+    <h1 style="margin:0;font-size:20px;line-height:1.15;">Pharmacy Staff Rota<br><small id="printWeek" style="font-size:12px;opacity:0.9;"></small></h1>
     <div class="week-navigation">
       <button id="prevWeek">◀</button>
       <span id="weekDisplay"></span>
@@ -118,6 +121,12 @@ th.today-col, td.today-col { background: #f2f2f2 !important; color: #111 !import
   </div>
 </div>
 
+<footer style="max-width:1400px;margin:14px auto 0 auto;color:#666;font-size:12px;text-align:center;">
+  &copy; 2026 PharmaRota Pro. All rights reserved.
+  &nbsp;|&nbsp;
+  <a href="https://github.com/AnnfieldPlainPharmacy/AnnfieldPlainPharmacy#readme" target="_blank" rel="noopener noreferrer">Readme</a>
+</footer>
+
 <!-- Right-click menu for shift cells -->
 <div id="contextMenu" class="context-menu" role="menu" aria-hidden="true">
   <button type="button" onclick="contextWorking()">✏️ Working (edit shift)</button>
@@ -138,23 +147,33 @@ th.today-col, td.today-col { background: #f2f2f2 !important; color: #111 !import
 
 <script>
 /* =========================
-   Google Sheets Web App API
+   Google Apps Script Web App
+   IMPORTANT:
+   Your Apps Script must support:
+     - GET read:  ?weekStart=YYYY-MM-DD&department=
+     - GET write: ?action=upsert&weekStart=...&department=...&employee=...&date=...&status=...&start=...&end=...
    ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxr7a3Fz9sQgkOJMPT5twHkLyPFkTo9HUImVK2Q_Hw9zrwpjNck15-x3TgPjVlI7WAg/exec";
 
 async function apiGetRota(weekStart, department) {
-  const url = `${API_URL}?weekStart=${encodeURIComponent(weekStart)}&department=${encodeURIComponent(department)}`;
+  const url = `${API_URL}?weekStart=${encodeURIComponent(weekStart)}&department=${encodeURIComponent(department || "")}`;
   const res = await fetch(url, { method: "GET" });
   return await res.json();
 }
 
-// DIAGNOSTIC: minimal POST ping (no headers)
-async function apiPingPost(){
-  const res = await fetch(API_URL, {
-    method: "POST",
-    body: JSON.stringify({ ping: true, ts: new Date().toISOString() })
+async function apiUpsertRow(row) {
+  const qs = new URLSearchParams({
+    action: "upsert",
+    weekStart: row.weekStart,
+    department: row.department,
+    employee: row.employee,
+    date: row.date,
+    status: row.status || "",
+    start: row.start || "",
+    end: row.end || ""
   });
-  return await res.text();
+  const res = await fetch(`${API_URL}?${qs.toString()}`, { method: "GET" });
+  return await res.json();
 }
 
 /* =========================
@@ -196,6 +215,10 @@ function getWeekDates(offset=0){
 function getWeekStartISO(){
   return getWeekDates(currentWeekOffset)[0].toISOString().slice(0,10);
 }
+function getDateISOForIndex(si){
+  const days = getWeekDates(currentWeekOffset);
+  return days[si].toISOString().slice(0,10);
+}
 function getWeekKey(){ return "rota_"+getWeekStartISO(); }
 
 function isToday(d){
@@ -212,6 +235,7 @@ function formatHeaderDate(d){
   const mon = d.toLocaleDateString("en-GB", { month: "short" });
   return `${wd} ${ordinal(d.getDate())} ${mon}`;
 }
+
 function normaliseShift(v){
   if(!v) return "";
   v = String(v).toLowerCase().trim();
@@ -243,6 +267,13 @@ function parseBreak(raw){
   }
   return { base: String(raw), br: null };
 }
+function withBreak(base, br){
+  if(!base) return "";
+  if(base === "HOLIDAY" || base === "SICK") return base;
+  if(br === null || br === undefined) return base;
+  const mins = Math.max(0, Math.round(Number(br)));
+  return `${base}|B${mins}`;
+}
 function breakMinutes(shift){
   const { base, br } = parseBreak(shift);
   if(!base || base==="HOLIDAY" || base==="SICK") return 0;
@@ -269,6 +300,172 @@ function deptClass(deptName){
   if(n.includes("counter")) return "dept-counter";
   if(n.includes("dispensary")) return "dept-dispensary";
   return "";
+}
+
+function shiftToRowParts(norm){
+  let status="", start="", end="";
+  if(norm === "HOLIDAY") status = "HOLIDAY";
+  else if(norm === "SICK") status = "SICK";
+  else if(norm) {
+    status = "WORK";
+    const parts = norm.split("-");
+    start = parts[0] || "";
+    end = parts[1] || "";
+  } else {
+    status = ""; start = ""; end = "";
+  }
+  return { status, start, end };
+}
+
+/* =========================
+   Shared save (GET upsert)
+   ========================= */
+let saveTimer = null;
+let pendingCellSave = null;
+
+function queueSaveOneCell(row){
+  pendingCellSave = row;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const lastSaved = document.getElementById("lastSaved");
+    try{
+      lastSaved.textContent = "Saving to shared sheet…";
+      const res = await apiUpsertRow(pendingCellSave);
+      if(res && (res.ok === true || res.status === "OK")){
+        lastSaved.textContent = "Saved to shared sheet";
+      } else {
+        lastSaved.textContent = "Save failed: " + (res && res.error ? res.error : "Unknown");
+      }
+    } catch(err){
+      lastSaved.textContent = "Save failed: " + (err && err.message ? err.message : String(err));
+    } finally {
+      pendingCellSave = null;
+    }
+  }, 450);
+}
+
+async function saveCurrentWeekToSheet(){
+  const lastSaved = document.getElementById("lastSaved");
+  lastSaved.textContent = "Saving full week…";
+
+  const weekStart = getWeekStartISO();
+  const days = getWeekDates(currentWeekOffset);
+
+  // Sequential to avoid hammering Apps Script
+  try{
+    for(const dept of currentData){
+      const department = (dept.department || "").trim();
+      for(const emp of dept.employees){
+        const employee = (emp.name || "").trim();
+        for(let si=0; si<7; si++){
+          const date = days[si].toISOString().slice(0,10);
+          const raw = (emp.shifts && emp.shifts[si]) ? emp.shifts[si] : "";
+          const { base } = parseBreak(raw);
+          const norm = base ? normaliseShift(base) : "";
+          const parts = shiftToRowParts(norm);
+
+          const row = { weekStart, department, employee, date, ...parts };
+          const res = await apiUpsertRow(row);
+          if(res && res.error) throw new Error(res.error);
+        }
+      }
+    }
+    lastSaved.textContent = "Saved to shared sheet";
+    return true;
+  } catch(err){
+    lastSaved.textContent = "Save failed: " + (err && err.message ? err.message : String(err));
+    return false;
+  }
+}
+
+/* =========================
+   Local fallback save
+   ========================= */
+function autoSaveLocalOnly(){
+  weekNotes = document.getElementById("rotaNotes").value;
+  localStorage.setItem(getWeekKey(), JSON.stringify({data: currentData, notes: weekNotes}));
+}
+
+/* =========================
+   Load from sheet
+   ========================= */
+async function loadWeekFromSheet(){
+  const weekStart = getWeekStartISO();
+  const result = await apiGetRota(weekStart, "");
+  const lastSaved = document.getElementById("lastSaved");
+
+  if (result && result.error) {
+    lastSaved.textContent = `Load failed: ${result.error}`;
+    return 0;
+  }
+
+  const rows = (result && result.rows) ? result.rows : [];
+
+  // reset to template then overlay sheet rows
+  currentData = JSON.parse(JSON.stringify(templateData));
+  const days = getWeekDates(currentWeekOffset);
+
+  function dayIndex(dateStr){
+    for(let i=0;i<7;i++){
+      if(days[i].toISOString().slice(0,10) === dateStr) return i;
+    }
+    return -1;
+  }
+  function getOrCreateDept(deptName){
+    let d = currentData.find(x => (x.department||"") === deptName);
+    if(!d){ d = { department: deptName, employees: [] }; currentData.push(d); }
+    return d;
+  }
+  function getOrCreateEmp(deptObj, empName){
+    let e = deptObj.employees.find(x => (x.name||"") === empName);
+    if(!e){ e = { name: empName, shifts: ["","","","","","",""] }; deptObj.employees.push(e); }
+    return e;
+  }
+
+  rows.forEach(r => {
+    const si = dayIndex(r.date);
+    if(si < 0) return;
+
+    const deptName = (r.department || "").trim();
+    const empName = (r.employee || "").trim();
+    if(!deptName || !empName) return;
+
+    const dept = getOrCreateDept(deptName);
+    const emp = getOrCreateEmp(dept, empName);
+
+    const status = (r.status || "").toUpperCase().trim();
+    if(status === "HOLIDAY") emp.shifts[si] = "HOLIDAY";
+    else if(status === "SICK") emp.shifts[si] = "SICK";
+    else if(status === "WORK") {
+      const start = (r.start || "").trim();
+      const end = (r.end || "").trim();
+      emp.shifts[si] = (start && end) ? `${start}-${end}` : "";
+    } else emp.shifts[si] = "";
+  });
+
+  lastSaved.textContent = rows.length ? "Loaded from shared sheet" : "Shared sheet has no rows for this week";
+  return rows.length;
+}
+
+async function loadWeek(){
+  // render template immediately
+  render();
+
+  const rowCount = await loadWeekFromSheet();
+
+  // Only use localStorage if the sheet is empty
+  if(!rowCount){
+    const saved = localStorage.getItem(getWeekKey());
+    if(saved){
+      const parsed = JSON.parse(saved);
+      if(parsed && parsed.data && Array.isArray(parsed.data)) {
+        currentData = parsed.data;
+        weekNotes = parsed.notes || "";
+      }
+    }
+  }
+
+  render();
 }
 
 /* =========================
@@ -361,41 +558,85 @@ function render() {
 }
 
 /* =========================
-   Minimal edit support (enough to run the diagnostic)
+   Edit + shared save per cell
    ========================= */
+function saveCellToSharedSheet(di, ei, si){
+  const deptName = (currentData[di]?.department || "").trim();
+  const empName = (currentData[di]?.employees?.[ei]?.name || "").trim();
+  const date = getDateISOForIndex(si);
+  const weekStart = getWeekStartISO();
+
+  const raw = (currentData[di].employees[ei].shifts[si] || "");
+  const { base } = parseBreak(raw);
+  const norm = base ? normaliseShift(base) : "";
+  const parts = shiftToRowParts(norm);
+
+  const row = {
+    weekStart,
+    department: deptName,
+    employee: empName,
+    date,
+    ...parts
+  };
+
+  queueSaveOneCell(row);
+}
+
 function editShift(cell,di,ei,si){
   const currentRaw = currentData[di].employees[ei].shifts[si] || "";
+  const parsed = parseBreak(currentRaw);
+  const existingBreak = parsed.br;
+
   const input = document.createElement("input");
-  input.value = currentRaw || "";
+  input.value = parsed.base || "";
   cell.innerHTML = "";
   cell.appendChild(input);
   input.focus();
   input.select();
 
   input.onblur = ()=>{
-    currentData[di].employees[ei].shifts[si] = input.value.trim();
+    const newBase = normaliseShift(input.value);
+    let next;
+    if(!newBase || newBase === "HOLIDAY" || newBase === "SICK"){
+      next = newBase || "";
+    } else {
+      next = withBreak(newBase, existingBreak);
+    }
+    currentData[di].employees[ei].shifts[si] = next;
+
+    // local fallback
+    autoSaveLocalOnly();
+
+    // shared save for this single cell
+    saveCellToSharedSheet(di, ei, si);
+
     render();
   };
+
   input.onkeydown = (e)=>{
     if(e.key === "Enter") input.blur();
-    if(e.key === "Escape"){ render(); closeContextMenu(); }
+    if(e.key === "Escape"){
+      render();
+      closeContextMenu();
+    }
   };
 }
+
 function editName(td,di,ei){
   const input=document.createElement("input");
   input.value=td.textContent;
   td.innerHTML=""; td.appendChild(input); input.focus();
   input.select();
-  input.onblur=()=>{ currentData[di].employees[ei].name=input.value.trim()||"Unnamed"; render(); };
+  input.onblur=()=>{ currentData[di].employees[ei].name=input.value.trim()||"Unnamed"; autoSaveLocalOnly(); render(); };
 }
 function editDepartment(span,di){
   const input=document.createElement("input");
   input.value=span.textContent;
   span.replaceWith(input); input.focus();
-  input.onblur=()=>{ currentData[di].department=input.value.trim(); render(); };
+  input.onblur=()=>{ currentData[di].department=input.value.trim(); autoSaveLocalOnly(); render(); };
 }
-function addEmployee(di){ currentData[di].employees.push({name:"New Employee",shifts:["","","","","","",""]}); render(); }
-function delEmp(di,ei){ if(confirm("Delete employee?")){ currentData[di].employees.splice(ei,1); render(); } }
+function addEmployee(di){ currentData[di].employees.push({name:"New Employee",shifts:["","","","","","",""]}); autoSaveLocalOnly(); render(); }
+function delEmp(di,ei){ if(confirm("Delete employee?")){ currentData[di].employees.splice(ei,1); autoSaveLocalOnly(); render(); } }
 
 let draggedEmployee=null;
 function dragEmployee(e){ const r=e.currentTarget; draggedEmployee={fromDept:+r.dataset.dept, fromIndex:+r.dataset.emp}; r.style.opacity="0.5"; }
@@ -407,7 +648,7 @@ function dropEmployee(e){
   const {fromDept,fromIndex}=draggedEmployee;
   const emp=currentData[fromDept].employees.splice(fromIndex,1)[0];
   currentData[toDept].employees.splice(toIndex,0,emp);
-  draggedEmployee=null; render();
+  draggedEmployee=null; autoSaveLocalOnly(); render();
 }
 function dropOnDepartment(e){
   e.preventDefault(); if(!draggedEmployee) return;
@@ -415,14 +656,15 @@ function dropOnDepartment(e){
   const {fromDept,fromIndex}=draggedEmployee;
   const emp=currentData[fromDept].employees.splice(fromIndex,1)[0];
   currentData[toDept].employees.push(emp);
-  draggedEmployee=null; render();
+  draggedEmployee=null; autoSaveLocalOnly(); render();
 }
 document.addEventListener("dragend",()=>{ document.querySelectorAll(".employee-row").forEach(r=>r.style.opacity="1"); });
 
 /* =========================
-   Context menu (kept, but OK if unused)
+   Context menu
    ========================= */
 let contextTarget = null;
+
 function closeBreakSubmenu(){
   const sub = document.getElementById('breakSubMenu');
   if(!sub) return;
@@ -464,6 +706,10 @@ function contextSet(val){
   if(!contextTarget) return;
   const {di, ei, si} = contextTarget;
   currentData[di].employees[ei].shifts[si] = val;
+
+  autoSaveLocalOnly();
+  saveCellToSharedSheet(di, ei, si);
+
   render();
   closeContextMenu();
 }
@@ -474,51 +720,52 @@ function contextWorking(){
   const cell = document.querySelector(`.shift-cell[data-di="${di}"][data-ei="${ei}"][data-si="${si}"]`);
   if(cell) editShift(cell, di, ei, si);
 }
-function openBreakSubmenu(){ /* not used in diagnostic */ }
-function toggleBreakSubmenu(e){ e.preventDefault(); }
-function contextSetBreak(mins){ alert("Break menu not used in diagnostic build."); }
-function contextClearBreak(){ alert("Break menu not used in diagnostic build."); }
-function contextFreeTypeBreak(){ alert("Break menu not used in diagnostic build."); }
 
-document.addEventListener('click', (e)=>{
+function openBreakSubmenu(){
+  const sub = document.getElementById('breakSubMenu');
   const menu = document.getElementById('contextMenu');
-  if(!menu || menu.style.display !== 'block') return;
-  if(!menu.contains(e.target)) closeContextMenu();
-});
-document.addEventListener('keydown', (e)=>{
-  if(e.key === 'Escape'){ closeContextMenu(); return; }
-});
-window.addEventListener('scroll', ()=> closeContextMenu(), true);
-window.addEventListener('resize', ()=> closeContextMenu());
+  if(!sub || !menu || menu.style.display !== 'block') return;
 
-/* =========================
-   Init + DIAGNOSTIC Save button
-   ========================= */
-function initRota(){
+  const rect = menu.getBoundingClientRect();
+  const pad = 6;
+  let x = rect.right + pad;
+  let y = rect.top + 70;
+
+  const { innerWidth:w, innerHeight:h } = window;
+  sub.style.display = 'block';
+  const srect = sub.getBoundingClientRect();
+  if(x + srect.width + pad > w) x = rect.left - srect.width - pad;
+  if(y + srect.height + pad > h) y = h - srect.height - pad;
+
+  sub.style.left = x + 'px';
+  sub.style.top = y + 'px';
+  sub.setAttribute('aria-hidden','false');
+}
+function toggleBreakSubmenu(e){
+  e.preventDefault();
+  const sub = document.getElementById('breakSubMenu');
+  if(!sub) return;
+  if(sub.style.display === 'block') closeBreakSubmenu();
+  else openBreakSubmenu();
+}
+function contextSetBreak(mins){
+  if(!contextTarget) return;
+  const {di, ei, si} = contextTarget;
+  const raw = currentData[di].employees[ei].shifts[si] || "";
+  const parsed = parseBreak(raw);
+  const base = normaliseShift(parsed.base || "");
+
+  if(!base || base === 'HOLIDAY' || base === 'SICK'){
+    alert('Set a working shift first, then set the break.');
+    return;
+  }
+
+  currentData[di].employees[ei].shifts[si] = withBreak(base, mins);
+
+  autoSaveLocalOnly();
+  saveCellToSharedSheet(di, ei, si);
+
   render();
-
-  // DIAGNOSTIC: Save button performs POST ping and displays result
-  document.getElementById("saveRota").onclick = async () => {
-    const ls = document.getElementById("lastSaved");
-    ls.textContent = "POST testing…";
-    try{
-      const t = await apiPingPost();
-      ls.textContent = "POST replied: " + String(t).slice(0, 120);
-    } catch(e){
-      ls.textContent = "POST failed: " + (e && e.message ? e.message : String(e));
-    }
-  };
-
-  document.getElementById("prevWeek").onclick = async () => { currentWeekOffset--; render(); };
-  document.getElementById("nextWeek").onclick = async () => { currentWeekOffset++; render(); };
-  document.getElementById("currentWeek").onclick = async () => { currentWeekOffset=0; render(); };
+  closeBreakSubmenu();
+  closeContextMenu();
 }
-
-if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", initRota);
-} else {
-  initRota();
-}
-</script>
-</body>
-</html>
