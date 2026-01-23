@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pharmacy Staff Rota</title>
+<title>Pharmarota Pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 * { box-sizing:border-box; font-family:Segoe UI,Tahoma,sans-serif; }
 body { background:#f5f5f5; padding:20px; }
-.container { max-width:1400px; margin:auto; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); overflow:hidden; }
+.container { max-width:1400px; margin:auto; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.1); }
 .header { background:#2c3e50; color:white; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
 .week-navigation button { margin-left:6px; }
 button { background:#3498db; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:13px; }
@@ -18,6 +18,7 @@ button:hover { background:#2980b9; }
 .rota-table th { background:#ecf0f1; position:sticky; top:0; }
 .employee-name { background:#f8f9fa; font-weight:600; min-width:220px; cursor:pointer; font-size:12px; padding:4px 6px; }
 .department-header { background:#34495e; color:white; font-weight:600; text-align:left; }
+.add-btn { background:#3498db; color:white; border:none; border-radius:3px; width:20px; height:20px; font-size:14px; font-weight:bold; cursor:pointer; margin-left:8px; padding:0; }
 
 tr.department-row td.department-header { background: #34495e !important; color: #ffffff !important; }
 tr.dept-medipak.employee-row td:not(.total-hours):not(.shift-holiday):not(.shift-sick):not(.today-col) { background: #fbf8ff; }
@@ -37,7 +38,6 @@ tr.dept-dispensary.employee-row td:not(.total-hours):not(.shift-holiday):not(.sh
 
 .dispensary-total-row td { background: #d9edf7; font-weight: 700; }
 .dispensary-total-row .label { text-align: left; }
-
 th.today-col, td.today-col { background: #f2f2f2 !important; color: #111 !important; }
 
 /* Context menu */
@@ -84,16 +84,13 @@ th.today-col, td.today-col { background: #f2f2f2 !important; color: #111 !import
 .context-submenu button:hover{ background:#f3f6f9; }
 .context-submenu .danger{ color:#c0392b; }
 .context-submenu .divider{ height:1px; background:#eeeeee; }
-
-footer a { color:#3498db; text-decoration:none; }
-footer a:hover { text-decoration:underline; }
 </style>
 </head>
 
 <body>
 <div class="container">
   <div class="header">
-    <h1 style="margin:0;font-size:20px;line-height:1.15;">Pharmacy Staff Rota<br><small id="printWeek" style="font-size:12px;opacity:0.9;"></small></h1>
+    <h1 style="margin:0;font-size:20px;line-height:1.15;">Pharmarota Pro<br><small id="printWeek" style="font-size:12px;opacity:0.9;"></small></h1>
     <div class="week-navigation">
       <button id="prevWeek">◀</button>
       <span id="weekDisplay"></span>
@@ -121,13 +118,6 @@ footer a:hover { text-decoration:underline; }
   </div>
 </div>
 
-<footer style="max-width:1400px;margin:14px auto 0 auto;color:#666;font-size:12px;text-align:center;">
-  &copy; 2026 PharmaRota Pro. All rights reserved.
-  &nbsp;|&nbsp;
-  <a href="https://github.com/AnnfieldPlainPharmacy/AnnfieldPlainPharmacy#readme" target="_blank" rel="noopener noreferrer">Readme</a>
-</footer>
-
-<!-- Right-click menu for shift cells -->
 <div id="contextMenu" class="context-menu" role="menu" aria-hidden="true">
   <button type="button" onclick="contextWorking()">✏️ Working (edit shift)</button>
   <button type="button" onclick="contextSet('HOLIDAY')">🏖️ Holiday</button>
@@ -147,11 +137,7 @@ footer a:hover { text-decoration:underline; }
 
 <script>
 /* =========================
-   Google Apps Script Web App
-   IMPORTANT:
-   Your Apps Script must support:
-     - GET read:  ?weekStart=YYYY-MM-DD&department=
-     - GET write: ?action=upsert&weekStart=...&department=...&employee=...&date=...&status=...&start=...&end=...
+   Google Sheets Web App API
    ========================= */
 const API_URL = "https://script.google.com/macros/s/AKfycbxr7a3Fz9sQgkOJMPT5twHkLyPFkTo9HUImVK2Q_Hw9zrwpjNck15-x3TgPjVlI7WAg/exec";
 
@@ -161,7 +147,8 @@ async function apiGetRota(weekStart, department) {
   return await res.json();
 }
 
-async function apiUpsertRow(row) {
+// GET write (no POST) -> Apps Script doGet?action=upsert...
+async function apiUpsertRow(row){
   const qs = new URLSearchParams({
     action: "upsert",
     weekStart: row.weekStart,
@@ -215,10 +202,6 @@ function getWeekDates(offset=0){
 function getWeekStartISO(){
   return getWeekDates(currentWeekOffset)[0].toISOString().slice(0,10);
 }
-function getDateISOForIndex(si){
-  const days = getWeekDates(currentWeekOffset);
-  return days[si].toISOString().slice(0,10);
-}
 function getWeekKey(){ return "rota_"+getWeekStartISO(); }
 
 function isToday(d){
@@ -239,10 +222,14 @@ function formatHeaderDate(d){
 function normaliseShift(v){
   if(!v) return "";
   v = String(v).toLowerCase().trim();
+
   v = v.replace(/[–—]/g,"-").replace(/\s+to\s+/g,"-").replace(/\s+/g,"-");
+
   if(v==="h" || v==="hol" || v==="holiday") return "HOLIDAY";
   if(v==="s" || v==="sick") return "SICK";
+
   if(!/^\d{1,2}(:\d{2})?-\d{1,2}(:\d{2})?$/.test(v)) return "";
+
   let[a,b]=v.split("-");
   function toTime(t){
     if(!t.includes(":")) t+=":00";
@@ -302,8 +289,51 @@ function deptClass(deptName){
   return "";
 }
 
-function shiftToRowParts(norm){
-  let status="", start="", end="";
+/* =========================
+   Shared save: per cell (GET)
+   ========================= */
+const pendingSaves = new Map();
+
+function queueCellSave(row){
+  const key = `${row.weekStart}|${row.department}|${row.employee}|${row.date}`;
+  if(pendingSaves.has(key)) clearTimeout(pendingSaves.get(key));
+
+  document.getElementById("lastSaved").textContent = "Saving to shared sheet…";
+
+  const t = setTimeout(async () => {
+    try{
+      const res = await apiUpsertRow(row);
+      if(res && res.ok){
+        document.getElementById("lastSaved").textContent = "Saved to shared sheet";
+      } else {
+        document.getElementById("lastSaved").textContent = "Save failed: " + (res && res.error ? res.error : "Unknown");
+      }
+    } catch(err){
+      document.getElementById("lastSaved").textContent = "Save failed: " + (err?.message || err);
+    } finally {
+      pendingSaves.delete(key);
+    }
+  }, 600);
+
+  pendingSaves.set(key, t);
+}
+
+function upsertFromCell(di, ei, si){
+  const days = getWeekDates(currentWeekOffset);
+  const date = days[si].toISOString().slice(0,10);
+
+  const deptName = (currentData[di].department || "").trim();
+  const empName = (currentData[di].employees[ei].name || "").trim();
+
+  const raw = (currentData[di].employees[ei].shifts[si] || "");
+  const parsed = parseBreak(raw);
+  const base = parsed.base || "";
+  const norm = base ? normaliseShift(base) : "";
+
+  let status = "";
+  let start = "";
+  let end = "";
+
   if(norm === "HOLIDAY") status = "HOLIDAY";
   else if(norm === "SICK") status = "SICK";
   else if(norm) {
@@ -312,160 +342,18 @@ function shiftToRowParts(norm){
     start = parts[0] || "";
     end = parts[1] || "";
   } else {
-    status = ""; start = ""; end = "";
-  }
-  return { status, start, end };
-}
-
-/* =========================
-   Shared save (GET upsert)
-   ========================= */
-let saveTimer = null;
-let pendingCellSave = null;
-
-function queueSaveOneCell(row){
-  pendingCellSave = row;
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    const lastSaved = document.getElementById("lastSaved");
-    try{
-      lastSaved.textContent = "Saving to shared sheet…";
-      const res = await apiUpsertRow(pendingCellSave);
-      if(res && (res.ok === true || res.status === "OK")){
-        lastSaved.textContent = "Saved to shared sheet";
-      } else {
-        lastSaved.textContent = "Save failed: " + (res && res.error ? res.error : "Unknown");
-      }
-    } catch(err){
-      lastSaved.textContent = "Save failed: " + (err && err.message ? err.message : String(err));
-    } finally {
-      pendingCellSave = null;
-    }
-  }, 450);
-}
-
-async function saveCurrentWeekToSheet(){
-  const lastSaved = document.getElementById("lastSaved");
-  lastSaved.textContent = "Saving full week…";
-
-  const weekStart = getWeekStartISO();
-  const days = getWeekDates(currentWeekOffset);
-
-  // Sequential to avoid hammering Apps Script
-  try{
-    for(const dept of currentData){
-      const department = (dept.department || "").trim();
-      for(const emp of dept.employees){
-        const employee = (emp.name || "").trim();
-        for(let si=0; si<7; si++){
-          const date = days[si].toISOString().slice(0,10);
-          const raw = (emp.shifts && emp.shifts[si]) ? emp.shifts[si] : "";
-          const { base } = parseBreak(raw);
-          const norm = base ? normaliseShift(base) : "";
-          const parts = shiftToRowParts(norm);
-
-          const row = { weekStart, department, employee, date, ...parts };
-          const res = await apiUpsertRow(row);
-          if(res && res.error) throw new Error(res.error);
-        }
-      }
-    }
-    lastSaved.textContent = "Saved to shared sheet";
-    return true;
-  } catch(err){
-    lastSaved.textContent = "Save failed: " + (err && err.message ? err.message : String(err));
-    return false;
-  }
-}
-
-/* =========================
-   Local fallback save
-   ========================= */
-function autoSaveLocalOnly(){
-  weekNotes = document.getElementById("rotaNotes").value;
-  localStorage.setItem(getWeekKey(), JSON.stringify({data: currentData, notes: weekNotes}));
-}
-
-/* =========================
-   Load from sheet
-   ========================= */
-async function loadWeekFromSheet(){
-  const weekStart = getWeekStartISO();
-  const result = await apiGetRota(weekStart, "");
-  const lastSaved = document.getElementById("lastSaved");
-
-  if (result && result.error) {
-    lastSaved.textContent = `Load failed: ${result.error}`;
-    return 0;
+    status = ""; // clear
   }
 
-  const rows = (result && result.rows) ? result.rows : [];
-
-  // reset to template then overlay sheet rows
-  currentData = JSON.parse(JSON.stringify(templateData));
-  const days = getWeekDates(currentWeekOffset);
-
-  function dayIndex(dateStr){
-    for(let i=0;i<7;i++){
-      if(days[i].toISOString().slice(0,10) === dateStr) return i;
-    }
-    return -1;
-  }
-  function getOrCreateDept(deptName){
-    let d = currentData.find(x => (x.department||"") === deptName);
-    if(!d){ d = { department: deptName, employees: [] }; currentData.push(d); }
-    return d;
-  }
-  function getOrCreateEmp(deptObj, empName){
-    let e = deptObj.employees.find(x => (x.name||"") === empName);
-    if(!e){ e = { name: empName, shifts: ["","","","","","",""] }; deptObj.employees.push(e); }
-    return e;
-  }
-
-  rows.forEach(r => {
-    const si = dayIndex(r.date);
-    if(si < 0) return;
-
-    const deptName = (r.department || "").trim();
-    const empName = (r.employee || "").trim();
-    if(!deptName || !empName) return;
-
-    const dept = getOrCreateDept(deptName);
-    const emp = getOrCreateEmp(dept, empName);
-
-    const status = (r.status || "").toUpperCase().trim();
-    if(status === "HOLIDAY") emp.shifts[si] = "HOLIDAY";
-    else if(status === "SICK") emp.shifts[si] = "SICK";
-    else if(status === "WORK") {
-      const start = (r.start || "").trim();
-      const end = (r.end || "").trim();
-      emp.shifts[si] = (start && end) ? `${start}-${end}` : "";
-    } else emp.shifts[si] = "";
+  queueCellSave({
+    weekStart: getWeekStartISO(),
+    department: deptName,
+    employee: empName,
+    date,
+    status,
+    start,
+    end
   });
-
-  lastSaved.textContent = rows.length ? "Loaded from shared sheet" : "Shared sheet has no rows for this week";
-  return rows.length;
-}
-
-async function loadWeek(){
-  // render template immediately
-  render();
-
-  const rowCount = await loadWeekFromSheet();
-
-  // Only use localStorage if the sheet is empty
-  if(!rowCount){
-    const saved = localStorage.getItem(getWeekKey());
-    if(saved){
-      const parsed = JSON.parse(saved);
-      if(parsed && parsed.data && Array.isArray(parsed.data)) {
-        currentData = parsed.data;
-        weekNotes = parsed.notes || "";
-      }
-    }
-  }
-
-  render();
 }
 
 /* =========================
@@ -558,28 +446,95 @@ function render() {
 }
 
 /* =========================
-   Edit + shared save per cell
+   Load from shared sheet
    ========================= */
-function saveCellToSharedSheet(di, ei, si){
-  const deptName = (currentData[di]?.department || "").trim();
-  const empName = (currentData[di]?.employees?.[ei]?.name || "").trim();
-  const date = getDateISOForIndex(si);
+async function loadWeekFromSheet(){
   const weekStart = getWeekStartISO();
+  const lastSaved = document.getElementById("lastSaved");
 
-  const raw = (currentData[di].employees[ei].shifts[si] || "");
-  const { base } = parseBreak(raw);
-  const norm = base ? normaliseShift(base) : "";
-  const parts = shiftToRowParts(norm);
+  const result = await apiGetRota(weekStart, "");
+  if(result && result.error){
+    lastSaved.textContent = "Load failed: " + result.error;
+    return false;
+  }
 
-  const row = {
-    weekStart,
-    department: deptName,
-    employee: empName,
-    date,
-    ...parts
-  };
+  const rows = (result && result.rows) ? result.rows : [];
 
-  queueSaveOneCell(row);
+  // Reset template then overlay rows
+  currentData = JSON.parse(JSON.stringify(templateData));
+  const days = getWeekDates(currentWeekOffset);
+
+  function dayIndex(dateStr){
+    for(let i=0;i<7;i++){
+      if(days[i].toISOString().slice(0,10) === dateStr) return i;
+    }
+    return -1;
+  }
+  function getOrCreateDept(deptName){
+    let d = currentData.find(x => (x.department||"") === deptName);
+    if(!d){ d = { department: deptName, employees: [] }; currentData.push(d); }
+    return d;
+  }
+  function getOrCreateEmp(deptObj, empName){
+    let e = deptObj.employees.find(x => (x.name||"") === empName);
+    if(!e){ e = { name: empName, shifts: ["","","","","","",""] }; deptObj.employees.push(e); }
+    return e;
+  }
+
+  rows.forEach(r => {
+    const si = dayIndex(r.date);
+    if(si < 0) return;
+
+    const deptName = (r.department || "").trim();
+    const empName = (r.employee || "").trim();
+    if(!deptName || !empName) return;
+
+    const dept = getOrCreateDept(deptName);
+    const emp = getOrCreateEmp(dept, empName);
+
+    const status = (r.status || "").toUpperCase().trim();
+    if(status === "HOLIDAY") emp.shifts[si] = "HOLIDAY";
+    else if(status === "SICK") emp.shifts[si] = "SICK";
+    else if(status === "WORK") {
+      const start = (r.start || "").trim();
+      const end = (r.end || "").trim();
+      emp.shifts[si] = (start && end) ? `${start}-${end}` : "";
+    } else {
+      emp.shifts[si] = "";
+    }
+  });
+
+  lastSaved.textContent = "Loaded from shared sheet";
+  return true;
+}
+
+async function loadWeek(){
+  render(); // show something immediately
+  try{
+    const ok = await loadWeekFromSheet();
+    if(!ok){
+      // fallback to local device only
+      const saved = localStorage.getItem(getWeekKey());
+      if(saved){
+        const parsed = JSON.parse(saved);
+        if(parsed && parsed.data && Array.isArray(parsed.data)){
+          currentData = parsed.data;
+          weekNotes = parsed.notes || "";
+        }
+      }
+    }
+  } catch(err){
+    document.getElementById("lastSaved").textContent = "Load error: " + (err?.message || err);
+  }
+  render();
+}
+
+/* =========================
+   Local fallback + edits
+   ========================= */
+function autoSaveLocalOnly(){
+  weekNotes = document.getElementById("rotaNotes").value;
+  localStorage.setItem(getWeekKey(), JSON.stringify({data: currentData, notes: weekNotes}));
 }
 
 function editShift(cell,di,ei,si){
@@ -604,12 +559,8 @@ function editShift(cell,di,ei,si){
     }
     currentData[di].employees[ei].shifts[si] = next;
 
-    // local fallback
     autoSaveLocalOnly();
-
-    // shared save for this single cell
-    saveCellToSharedSheet(di, ei, si);
-
+    upsertFromCell(di, ei, si);
     render();
   };
 
@@ -627,16 +578,30 @@ function editName(td,di,ei){
   input.value=td.textContent;
   td.innerHTML=""; td.appendChild(input); input.focus();
   input.select();
-  input.onblur=()=>{ currentData[di].employees[ei].name=input.value.trim()||"Unnamed"; autoSaveLocalOnly(); render(); };
+
+  input.onblur=()=>{
+    currentData[di].employees[ei].name=input.value.trim()||"Unnamed";
+    autoSaveLocalOnly();
+    render();
+    // Name changes affect keys; safest approach is press Save after rename to normalise
+    document.getElementById("lastSaved").textContent = "Name changed (press Save to ensure sheet matches)";
+  };
 }
+
 function editDepartment(span,di){
   const input=document.createElement("input");
   input.value=span.textContent;
   span.replaceWith(input); input.focus();
-  input.onblur=()=>{ currentData[di].department=input.value.trim(); autoSaveLocalOnly(); render(); };
+  input.onblur=()=>{
+    currentData[di].department=input.value.trim();
+    autoSaveLocalOnly();
+    render();
+    document.getElementById("lastSaved").textContent = "Department changed (press Save to ensure sheet matches)";
+  };
 }
+
 function addEmployee(di){ currentData[di].employees.push({name:"New Employee",shifts:["","","","","","",""]}); autoSaveLocalOnly(); render(); }
-function delEmp(di,ei){ if(confirm("Delete employee?")){ currentData[di].employees.splice(ei,1); autoSaveLocalOnly(); render(); } }
+function delEmp(di,ei){ if(confirm("Delete employee?")){ currentData[di].employees.splice(ei,1); autoSaveLocalOnly(); render(); document.getElementById("lastSaved").textContent="Deleted locally (sheet cleanup manual)"; } }
 
 let draggedEmployee=null;
 function dragEmployee(e){ const r=e.currentTarget; draggedEmployee={fromDept:+r.dataset.dept, fromIndex:+r.dataset.emp}; r.style.opacity="0.5"; }
@@ -708,8 +673,7 @@ function contextSet(val){
   currentData[di].employees[ei].shifts[si] = val;
 
   autoSaveLocalOnly();
-  saveCellToSharedSheet(di, ei, si);
-
+  upsertFromCell(di, ei, si);
   render();
   closeContextMenu();
 }
@@ -761,11 +725,103 @@ function contextSetBreak(mins){
   }
 
   currentData[di].employees[ei].shifts[si] = withBreak(base, mins);
-
   autoSaveLocalOnly();
-  saveCellToSharedSheet(di, ei, si);
-
+  upsertFromCell(di, ei, si);
   render();
   closeBreakSubmenu();
   closeContextMenu();
 }
+function contextClearBreak(){
+  if(!contextTarget) return;
+  const {di, ei, si} = contextTarget;
+  const raw = currentData[di].employees[ei].shifts[si] || "";
+  const parsed = parseBreak(raw);
+  const base = normaliseShift(parsed.base || "");
+  currentData[di].employees[ei].shifts[si] = base || "";
+  autoSaveLocalOnly();
+  upsertFromCell(di, ei, si);
+  render();
+  closeBreakSubmenu();
+  closeContextMenu();
+}
+function contextFreeTypeBreak(){
+  const val = prompt('Enter break in minutes (e.g. 15, 45, 75):');
+  if(val === null) return;
+  const mins = Number(val);
+  if(!Number.isFinite(mins) || mins < 0){
+    alert('Please enter a valid number of minutes.');
+    return;
+  }
+  contextSetBreak(Math.round(mins));
+}
+
+document.addEventListener('click', (e)=>{
+  const menu = document.getElementById('contextMenu');
+  if(!menu || menu.style.display !== 'block') return;
+  if(!menu.contains(e.target)) closeContextMenu();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape'){ closeContextMenu(); return; }
+});
+window.addEventListener('scroll', ()=> closeContextMenu(), true);
+window.addEventListener('resize', ()=> closeContextMenu());
+
+/* =========================
+   Save button (full week sync trigger)
+   ========================= */
+async function saveWholeWeekToSheet(){
+  const days = getWeekDates(currentWeekOffset);
+  document.getElementById("lastSaved").textContent = "Saving week to shared sheet…";
+
+  // Save all cells (GET one-by-one)
+  for(let di=0; di<currentData.length; di++){
+    for(let ei=0; ei<currentData[di].employees.length; ei++){
+      for(let si=0; si<7; si++){
+        // write sequentially to avoid hammering Apps Script
+        await new Promise(r => setTimeout(r, 40));
+        upsertFromCell(di, ei, si);
+      }
+    }
+  }
+
+  document.getElementById("lastSaved").textContent = "Week save queued (cells saving)";
+}
+
+/* =========================
+   Init
+   ========================= */
+function initRota(){
+  render();
+
+  document.getElementById("saveRota").onclick = async () => { await saveWholeWeekToSheet(); };
+  document.getElementById("prevWeek").onclick = async () => { currentWeekOffset--; await loadWeek(); };
+  document.getElementById("nextWeek").onclick = async () => { currentWeekOffset++; await loadWeek(); };
+  document.getElementById("currentWeek").onclick = async () => { currentWeekOffset=0; await loadWeek(); };
+
+  document.getElementById("rotaNotes").addEventListener("input", () => {
+    autoSaveLocalOnly();
+    document.getElementById("lastSaved").textContent = "Notes saved on this device";
+  });
+
+  loadWeek();
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initRota);
+} else {
+  initRota();
+}
+</script>
+
+<footer style="max-width:1400px;margin:14px auto 0 auto;color:#666;font-size:12px;text-align:center;">
+  &copy; 2026 PharmaRota Pro. All rights reserved.
+  &nbsp;|&nbsp;
+  <a href="https://github.com/AnnfieldPlainPharmacy/AnnfieldPlainPharmacy#readme"
+     target="_blank" rel="noopener noreferrer"
+     style="color:#3498db;text-decoration:none;">
+    Readme
+  </a>
+</footer>
+
+</body>
+</html>
