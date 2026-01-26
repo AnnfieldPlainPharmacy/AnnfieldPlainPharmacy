@@ -6,13 +6,9 @@ backend:
 media_folder: "images/uploads"
 public_folder: "/images/uploads"
 
-# REQUIRED (for Decap CMS v3 schema)
+# Use the built-in file picker (no keys required)
 media_library:
-  name: uploadcare
-
-# You can change this key later; this makes it work immediately.
-uploadcare:
-  public_key: "demopublickey"
+  name: "file"
 
 collections:
   - name: "content"
