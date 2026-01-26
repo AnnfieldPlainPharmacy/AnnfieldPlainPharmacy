@@ -157,7 +157,8 @@ async function apiUpsertRow(row){
     date: row.date,
     status: row.status || "",
     start: row.start || "",
-    end: row.end || ""
+    end: row.end || "",
+    breakMins: (row.breakMins ?? "").toString()
   });
   const res = await fetch(`${API_URL}?${qs.toString()}`, { method: "GET" });
   return await res.json();
@@ -333,6 +334,7 @@ function upsertFromCell(di, ei, si){
   let status = "";
   let start = "";
   let end = "";
+  let breakMins = "";
 
   if(norm === "HOLIDAY") status = "HOLIDAY";
   else if(norm === "SICK") status = "SICK";
@@ -341,6 +343,7 @@ function upsertFromCell(di, ei, si){
     const parts = norm.split("-");
     start = parts[0] || "";
     end = parts[1] || "";
+    breakMins = (parsed.br !== null && parsed.br !== undefined) ? String(parsed.br) : "";
   } else {
     status = ""; // clear
   }
@@ -352,7 +355,8 @@ function upsertFromCell(di, ei, si){
     date,
     status,
     start,
-    end
+    end,
+    breakMins
   });
 }
 
@@ -498,7 +502,14 @@ async function loadWeekFromSheet(){
     else if(status === "WORK") {
       const start = (r.start || "").trim();
       const end = (r.end || "").trim();
-      emp.shifts[si] = (start && end) ? `${start}-${end}` : "";
+      const b = (r.breakMins ?? "").toString().trim();
+
+      if(start && end){
+        const baseShift = `${start}-${end}`;
+        emp.shifts[si] = b !== "" ? `${baseShift}|B${Number(b)}` : baseShift;
+      } else {
+        emp.shifts[si] = "";
+      }
     } else {
       emp.shifts[si] = "";
     }
@@ -583,7 +594,6 @@ function editName(td,di,ei){
     currentData[di].employees[ei].name=input.value.trim()||"Unnamed";
     autoSaveLocalOnly();
     render();
-    // Name changes affect keys; safest approach is press Save after rename to normalise
     document.getElementById("lastSaved").textContent = "Name changed (press Save to ensure sheet matches)";
   };
 }
@@ -770,14 +780,12 @@ window.addEventListener('resize', ()=> closeContextMenu());
    Save button (full week sync trigger)
    ========================= */
 async function saveWholeWeekToSheet(){
-  const days = getWeekDates(currentWeekOffset);
   document.getElementById("lastSaved").textContent = "Saving week to shared sheet…";
 
   // Save all cells (GET one-by-one)
   for(let di=0; di<currentData.length; di++){
     for(let ei=0; ei<currentData[di].employees.length; ei++){
       for(let si=0; si<7; si++){
-        // write sequentially to avoid hammering Apps Script
         await new Promise(r => setTimeout(r, 40));
         upsertFromCell(di, ei, si);
       }
