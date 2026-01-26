@@ -2,6 +2,18 @@ backend:
   name: git-gateway
   branch: main
 
+# REQUIRED
+media_folder: "images/uploads"
+public_folder: "/images/uploads"
+
+# REQUIRED (for Decap CMS v3 schema)
+media_library:
+  name: uploadcare
+
+# You can change this key later; this makes it work immediately.
+uploadcare:
+  public_key: "demopublickey"
+
 collections:
   - name: "content"
     label: "Content"
