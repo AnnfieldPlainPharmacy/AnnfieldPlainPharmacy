@@ -661,5 +661,18 @@ if (document.readyState === "loading") {
   </a>
 </footer>
 
+<h1 id="cmsTitle"></h1>
+<p id="cmsBody"></p>
+
+<script>
+fetch("/content/home.json")
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById("cmsTitle").textContent = d.title || "";
+    document.getElementById("cmsBody").textContent = d.body || "";
+  });
+</script>
+
+  
 </body>
 </html>
